@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "clickpesa-python-sdk"
+version = "0.1.0"
+authors = [
+  { name = "Jackson Linus", email = "jacksonlinus95@gmail.com" },
+]
+description = "Production-grade Python SDK for the ClickPesa API — sync & async, collections, payouts, BillPay and more"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["clickpesa", "payments", "fintech", "tanzania", "sdk", "api"]
+dependencies = [
+    "httpx>=0.24.0",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Intended Audience :: Developers",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Office/Business :: Financial",
+    "Typing :: Typed",
+]
+
+[project.urls]
+Homepage = "https://github.com/JAXPARROW/clickpesa-python-sdk"
+Documentation = "https://docs.clickpesa.com"
+Repository = "https://github.com/JAXPARROW/clickpesa-python-sdk"
+"Bug Tracker" = "https://github.com/JAXPARROW/clickpesa-python-sdk/issues"
+Changelog = "https://github.com/JAXPARROW/clickpesa-python-sdk/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.23",
+    "respx>=0.20",
+    "build",
+    "twine",
+    "mypy>=1.0",
+    "ruff>=0.1",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+clickpesa = ["py.typed"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.mypy]
+strict = true
+python_version = "3.10"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
