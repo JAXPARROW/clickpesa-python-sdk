@@ -8,9 +8,20 @@ from __future__ import annotations
 
 import hmac
 import hashlib
+import json
 import logging
+from typing import Any
 
 logger = logging.getLogger(__name__)
+
+
+def _canonicalize(obj: Any) -> Any:
+    """Recursively sort all object keys alphabetically at every nesting level."""
+    if obj is None or not isinstance(obj, (dict, list)):
+        return obj
+    if isinstance(obj, list):
+        return [_canonicalize(item) for item in obj]
+    return {key: _canonicalize(obj[key]) for key in sorted(obj.keys())}
 
 
 class SecurityManager:
@@ -19,15 +30,15 @@ class SecurityManager:
         """
         Generate a ClickPesa-compatible HMAC-SHA256 checksum for a request payload.
 
-        Algorithm:
-        1. Sort payload keys alphabetically.
-        2. Concatenate the string representation of all top-level scalar values
-           (nested dicts and lists are excluded, matching ClickPesa's specification).
-        3. Return the hex digest of HMAC-SHA256(key, concatenated_string).
+        Algorithm (per ClickPesa docs):
+        1. Canonicalize payload — recursively sort all object keys alphabetically.
+        2. Serialize to compact JSON (no extra whitespace).
+        3. Return the hex digest of HMAC-SHA256(key, json_string).
 
         Args:
             checksum_key: Your application's checksum secret key.
-            payload:      The request body dict (before the checksum field is added).
+            payload:      The request body dict (must NOT include ``checksum`` or
+                          ``checksumMethod`` fields).
 
         Returns:
             Hex-encoded HMAC-SHA256 string, or ``""`` if ``checksum_key`` is falsy.
@@ -35,12 +46,8 @@ class SecurityManager:
         if not checksum_key:
             return ""
 
-        sorted_keys = sorted(payload.keys())
-        payload_string = "".join(
-            str(payload[k])
-            for k in sorted_keys
-            if not isinstance(payload[k], (dict, list))
-        )
+        canonical = _canonicalize(payload)
+        payload_string = json.dumps(canonical, separators=(",", ":"), sort_keys=False)
 
         return hmac.new(
             checksum_key.encode("utf-8"),
