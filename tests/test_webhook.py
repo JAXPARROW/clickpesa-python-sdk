@@ -48,12 +48,25 @@ def test_verify_empty_signature_returns_false():
     assert WebhookValidator.verify(PAYLOAD, "", CHECKSUM_KEY) is False
 
 
-def test_verify_nested_fields_excluded():
-    """Nested dicts and lists are ignored in the checksum — a flat signature
-    still verifies a payload that has extra nested fields."""
-    flat_sig = _sig()
-    payload_with_nested = {**PAYLOAD, "customer": {"name": "Alice"}, "items": [1, 2, 3]}
-    assert WebhookValidator.verify(payload_with_nested, flat_sig, CHECKSUM_KEY) is True
+def test_verify_real_webhook_structure():
+    """Signature covers the full payload including nested data — mirrors ClickPesa's
+    actual webhook shape: {"event": "...", "data": {...nested...}}."""
+    webhook = {
+        "event": "PAYMENT RECEIVED",
+        "data": {
+            "id": "ORD123LCP456",
+            "status": "SUCCESS",
+            "orderReference": "ORD123",
+            "collectedAmount": "10000",
+            "collectedCurrency": "TZS",
+            "customer": {
+                "customerName": "John Doe",
+                "customerPhoneNumber": "255700000000",
+            },
+        },
+    }
+    sig = SecurityManager.create_checksum(CHECKSUM_KEY, webhook)
+    assert WebhookValidator.verify(webhook, sig, CHECKSUM_KEY) is True
 
 
 # ---------------------------------------------------------------------------
