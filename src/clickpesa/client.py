@@ -108,43 +108,67 @@ class ClickPesaClient:
                 return self._token
 
             logger.debug("Refreshing ClickPesa access token …")
-            try:
-                response = self._http.post(
-                    _AUTH_PATH,
-                    headers={
-                        "client-id": self.client_id,
-                        "api-key": self.api_key,
-                    },
-                )
-            except httpx.TransportError as exc:
-                raise ClickPesaError(f"Network error during authentication: {exc}") from exc
+            last_exc: Exception | None = None
+            for attempt in range(1, self.max_retries + 1):
+                try:
+                    response = self._http.post(
+                        _AUTH_PATH,
+                        headers={
+                            "client-id": self.client_id,
+                            "api-key": self.api_key,
+                        },
+                    )
+                except httpx.TransportError as exc:
+                    last_exc = exc
+                    if attempt < self.max_retries:
+                        logger.warning(
+                            "Auth network error on attempt %d/%d — retrying: %s",
+                            attempt, self.max_retries, exc,
+                        )
+                        _backoff(attempt)
+                        continue
+                    raise ClickPesaError(f"Network error during authentication: {exc}") from exc
 
-            if response.status_code == 401:
-                raise AuthenticationError(
-                    "Invalid client-id or api-key", status_code=401
-                )
-            if response.status_code == 403:
+                if response.status_code in _RETRY_STATUSES and attempt < self.max_retries:
+                    logger.warning(
+                        "Auth server error %d on attempt %d/%d — retrying …",
+                        response.status_code, attempt, self.max_retries,
+                    )
+                    _backoff(attempt)
+                    continue
+
+                if response.status_code == 401:
+                    raise AuthenticationError(
+                        "Invalid client-id or api-key", status_code=401, response=_safe_json(response)
+                    )
+                if response.status_code == 403:
+                    data = _safe_json(response)
+                    raise ForbiddenError(
+                        data.get("message", "Forbidden"),
+                        status_code=403,
+                        response=data,
+                    )
+                if not response.is_success:
+                    data = _safe_json(response)
+                    raise ClickPesaError(
+                        data.get("message", f"Authentication failed ({response.status_code})"),
+                        status_code=response.status_code,
+                        response=data,
+                    )
+
                 data = _safe_json(response)
-                raise ForbiddenError(
-                    data.get("message", "Forbidden"),
-                    status_code=403,
-                    response=data,
-                )
-            if not response.is_success:
-                raise ClickPesaError(
-                    f"Authentication failed ({response.status_code}): {response.text}",
-                    status_code=response.status_code,
-                )
+                token = data.get("token")
+                if not token:
+                    raise ClickPesaError("Authentication response missing 'token' field")
 
-            data = _safe_json(response)
-            token = data.get("token")
-            if not token:
-                raise ClickPesaError("Authentication response missing 'token' field")
+                self._token = token
+                self._token_expires_at = now + _TOKEN_TTL
+                logger.debug("Access token cached for %d seconds.", _TOKEN_TTL)
+                return self._token
 
-            self._token = token
-            self._token_expires_at = now + _TOKEN_TTL
-            logger.debug("Access token cached for %d seconds.", _TOKEN_TTL)
-            return self._token
+            raise ClickPesaError(
+                f"Authentication failed after {self.max_retries} attempts"
+            ) from last_exc
 
     # ------------------------------------------------------------------
     # Core request dispatcher

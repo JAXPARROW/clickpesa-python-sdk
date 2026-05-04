@@ -219,3 +219,74 @@ def test_retries_then_succeeds():
     assert result["status"] == "PROCESSING"
     # 1 auth call + 3 endpoint attempts
     assert respx.calls.call_count == 4
+
+
+@respx.mock
+def test_auth_retries_on_transport_error_then_succeeds():
+    """Auth TransportError is retried; succeeds on the second attempt."""
+    auth_seq = iter([
+        httpx.TransportError("timed out"),
+        httpx.Response(200, json={"token": "Bearer tok"}),
+    ])
+
+    def auth_side_effect(req):
+        val = next(auth_seq)
+        if isinstance(val, Exception):
+            raise val
+        return val
+
+    respx.post(AUTH_URL).mock(side_effect=auth_side_effect)
+    respx.get(BALANCE_URL).mock(return_value=httpx.Response(200, json=[]))
+
+    cp = ClickPesa(client_id="x", api_key="y", sandbox=True)
+    with patch("clickpesa.client.time.sleep"):
+        cp.account.get_balance()
+
+    assert cp._token == "Bearer tok"
+    # 2 auth attempts + 1 balance call
+    assert respx.calls.call_count == 3
+
+
+@respx.mock
+def test_auth_raises_after_all_transport_error_retries():
+    """Auth raises ClickPesaError after exhausting all retry attempts on TransportError."""
+    from clickpesa.exceptions import ClickPesaError as CPError
+
+    respx.post(AUTH_URL).mock(side_effect=httpx.TransportError("connection refused"))
+
+    cp = ClickPesa(client_id="x", api_key="y", sandbox=True)
+    with patch("clickpesa.client.time.sleep"):
+        with pytest.raises(CPError, match="Network error during authentication"):
+            cp.account.get_balance()
+
+
+@respx.mock
+def test_auth_retries_on_server_error_then_succeeds():
+    """Auth 500 is retried; succeeds on the second attempt."""
+    auth_responses = iter([
+        httpx.Response(500, json={"message": "Internal Server Error"}),
+        httpx.Response(200, json={"token": "Bearer tok2"}),
+    ])
+    respx.post(AUTH_URL).mock(side_effect=lambda req: next(auth_responses))
+    respx.get(BALANCE_URL).mock(return_value=httpx.Response(200, json=[]))
+
+    cp = ClickPesa(client_id="x", api_key="y", sandbox=True)
+    with patch("clickpesa.client.time.sleep"):
+        cp.account.get_balance()
+
+    assert cp._token == "Bearer tok2"
+
+
+@respx.mock
+def test_auth_error_response_is_attached_to_exception():
+    """AuthenticationError raised on 401 carries the response payload."""
+    respx.post(AUTH_URL).mock(
+        return_value=httpx.Response(401, json={"message": "Invalid credentials"})
+    )
+
+    cp = ClickPesa(client_id="bad", api_key="bad", sandbox=True)
+    with pytest.raises(AuthenticationError) as exc_info:
+        cp.account.get_balance()
+
+    assert exc_info.value.response is not None
+    assert exc_info.value.status_code == 401
