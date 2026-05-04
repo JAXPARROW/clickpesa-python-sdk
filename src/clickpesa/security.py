@@ -63,6 +63,11 @@ class SecurityManager:
         Uses ``hmac.compare_digest`` for constant-time comparison to prevent
         timing-based side-channel attacks.
 
+        ClickPesa only signs top-level scalar fields in webhook payloads —
+        nested dicts and lists are excluded from the signature. This mirrors
+        their signing algorithm so extra envelope fields (e.g. ``customer``,
+        ``metadata``) don't cause verification to fail.
+
         Args:
             checksum_key: Your application's checksum secret key.
             payload:      The parsed webhook body dict.
@@ -74,7 +79,8 @@ class SecurityManager:
         if not signature:
             return False
 
-        computed = SecurityManager.create_checksum(checksum_key, payload)
+        flat_payload = {k: v for k, v in payload.items() if not isinstance(v, (dict, list))}
+        computed = SecurityManager.create_checksum(checksum_key, flat_payload)
         return hmac.compare_digest(computed, signature)
 
 

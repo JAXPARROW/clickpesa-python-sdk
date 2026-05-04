@@ -106,8 +106,6 @@ class AsyncClickPesa(AsyncClickPesaClient):
         self.links = AsyncLinkService(self)
 
 
-__version__ = __version__
-
 __all__ = [
     # Main clients
     "ClickPesa",

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "clickpesa-python-sdk"
-version = "0.1.2"
+version = "0.1.3"
 authors = [
   { name = "Jackson Linus", email = "jacksonlinus95@gmail.com" },
 ]
